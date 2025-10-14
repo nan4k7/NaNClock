@@ -2,12 +2,10 @@
 // #define USEWIFI //enable WiFi support, further down, enter ssid/password there
 #define FADING // uncomment to enable fading effects for dots/digits, other parameters further down below
 #define TEMPDISPLAY // uncomment this to enable tempDisplay(). It's an example of how to display values at specified times, like temperature readouts
-#define PIR // setes a PIR to lower brightness when no movement
+#define PIR // sets a PIR to lower brightness when no movement
 #define USERTC
 
 #include <EEPROM.h>
-#include <Wire.h>
-#include <RtcDS3231.h>
 #include <FastLED.h>
 #include <RtcDS3231.h>
 #include <TimeLib.h>
@@ -25,7 +23,6 @@
 #endif
 /* End RTC config/parameters---------------------------------------------------------------------------- */
 
-
 /* Start WiFi config/parameters------------------------------------------------------------------------- */
 #ifdef USEWIFI
 	const char* wifiSSID = "Fibergarch 2.4";
@@ -33,12 +30,10 @@
 #endif
 /* End WiFi config/parameters--------------------------------------------------------------------------- */
 
-
 /* Start button config/pins----------------------------------------------------------------------------- */
 #define BUTTON_A_PIN 3 // momentary push button, 1 pin to gnd, 1 pin GPIO_3
 #define BUTTON_B_PIN 4 // momentary push button, 1 pin to gnd, 1 pin GPIO_4
 /* End button config/pins------------------------------------------------------------------------------- */
-
 
 /* Start basic appearance config------------------------------------------------------------------------ */
 const bool dotsBlinking = true;                     // true = only light up dots on even seconds, false = always on
@@ -70,9 +65,6 @@ uint8_t brightness = brightnessLevels[0];           // default brightness if non
 
 /* End of basic config/parameters section */
 
-
-
-
 /* Start of FastLED/clock stuff */
 
 #define FASTLED_ESP8266_RAW_PIN_ORDER // this means we'll be using the raw esp8266 pin order -> GPIO_2
@@ -85,7 +77,6 @@ uint8_t brightness = brightnessLevels[0];           // default brightness if non
 uint8_t markerHSV[3] = { 0, 127, 20 }; // this color will be used to "flag" leds for coloring later on while updating the leds
 CRGB leds[LED_COUNT];
 CRGBPalette16 currentPalette;
-
 
 // start clock specific config/parameters
 /* Segment order, seen from the front:
@@ -114,7 +105,6 @@ orders, like Lazy 7 - QBE, which is using a single strip and has an order of
 3, 0, 2, 1 for top left, top right, bottom left, bottom right.
 
 */
-
 
 /* Below is the configuration for led <> segment assignments.
 	LED_ACCESS_MODE 0 will use the two values inside each segment (led a, led b)
@@ -243,7 +233,7 @@ uint8_t btnRepeatCounter = 0; // keeps track of how often a button press has bee
 #endif
 
 void setup() {
-  setCpuFrequencyMhz(40);
+	setCpuFrequencyMhz(40);
 
   Wire.begin();
   Wire.setClock(100000);
@@ -419,8 +409,8 @@ void loop() {
 	static uint8_t lastInput = 0; // != 0 if any button press has been detected
 	static uint8_t lastSecondDisplayed = 0; // This keeps track of the last second when the display was updated (HH:MM and HH:MM:SS)
 	static unsigned long lastCheckRTC = millis(); // This will be used to read system time in case no RTC is defined (not supported!)
-	static bool doUpdate = false; // Update led content whenever something sets this to true. Coloring will always
-								// happen at fixed intervals!
+	static bool doUpdate = false; // Update led content whenever something sets this to true. Coloring will always happen at fixed intervals!
+
 	#ifdef USERTC
 		static RtcDateTime rtcTime = Rtc.GetDateTime(); // Get time from rtc
 	#else
@@ -546,7 +536,6 @@ void loop() {
 		}
 	}
 #endif
-
 
 #ifdef FADING
 	void fadeSegment(uint8_t pos, uint8_t segment, uint8_t amount, uint8_t fadeType) {
@@ -845,7 +834,6 @@ void setupClock() {
 	#endif
 }
 
-
 uint16_t getUserInput(uint8_t sym1, uint8_t sym2, uint8_t startVal, uint8_t endVal) {
 	/* This will show two symbols on HH and allow to enter a 2 digit value using the buttons
 	and display the value on MM. */
@@ -892,7 +880,6 @@ uint16_t getUserInput(uint8_t sym1, uint8_t sym2, uint8_t startVal, uint8_t endV
 		Serial.println(currentVal);
 	#endif
 }
-
 
 void colorizeOutput(uint8_t mode) {
 	/* So far showDigit()/showSegment() only set some leds inside the array to values from "markerHSV" but we haven't
@@ -1014,16 +1001,15 @@ void colorizeOutput(uint8_t mode) {
 		}
 	}
 
-  if (millis() - lastColorChange > colorSpeed) {
-    if (reverseColorCycling) {
-      startColor--;
-    } else {
-      startColor++;
-    }
-    lastColorChange = millis();
-  }
+	if (millis() - lastColorChange > colorSpeed) {
+		if (reverseColorCycling) {
+			startColor--;
+		} else {
+			startColor++;
+		}
+		lastColorChange = millis();
+	}
 }
-
 
 void colorizeSegment(uint8_t segment, uint8_t pos, uint8_t color) {
 	/* Checks if segment at position is on - and if it is, assigns color from current palette */
@@ -1043,7 +1029,6 @@ void colorizeSegment(uint8_t segment, uint8_t pos, uint8_t color) {
 		}
 	}
 }
-
 
 void colorHelper(uint8_t pos, uint8_t hue, uint8_t sat, uint8_t bri) {
 	/* Used for coloring digits inside setup routines/steps
@@ -1066,7 +1051,6 @@ void colorHelper(uint8_t pos, uint8_t hue, uint8_t sat, uint8_t bri) {
 		}
 	}
 }
-
 
 void displayTime(time_t t) {
   if (clockStatus >= 90) {
@@ -1160,7 +1144,6 @@ void showDots(int8_t dots) {
 	}
 }
 
-
 void showDigit(uint8_t digit, uint8_t pos) {
 	// This draws numbers using the according segments as defined on top of the sketch (0 - 9) or symbols/characters
 	// (index 10+)
@@ -1169,7 +1152,6 @@ void showDigit(uint8_t digit, uint8_t pos) {
 			showSegment(i, pos);
 	}
 }
-
 
 void paletteSwitcher() {
 	/* As the name suggests this takes care of switching palettes. When adding palettes, make sure paletteCount
@@ -1319,7 +1301,6 @@ void paletteSwitcher() {
 	#endif
 }
 
-
 void brightnessSwitcher() {
 	static uint8_t currentIndex = 0;
 	static uint8_t brightnessLevelsCount = 5;
@@ -1371,7 +1352,6 @@ void brightnessSwitcher() {
 	#endif
 }
 
-
 void colorModeSwitcher() {
 	static uint8_t currentIndex = 0;
 	if (clockStatus == 1) { // Clock is starting up, so load selected palette from eeprom...
@@ -1422,7 +1402,6 @@ void colorModeSwitcher() {
 		Serial.println(F("colorModeSwitcher() done"));
 	#endif
 }
-
 
 void displayModeSwitcher() {
 	static uint8_t currentIndex = 0;
@@ -1500,8 +1479,6 @@ void displayModeSwitcher() {
 	#endif
 }
 
-
-
 bool leapYear(uint16_t y) {
 	boolean isLeapYear = false;
 	if (y % 4 == 0)
@@ -1515,7 +1492,6 @@ bool leapYear(uint16_t y) {
 	else
 		return false;
 }
-
 
 uint8_t inputButtons() {
 	/* This scans for button presses and keeps track of delay/repeat for user inputs
@@ -1579,8 +1555,6 @@ uint8_t inputButtons() {
 
 	return retVal;
 }
-
-
 
 // functions below will only be included if DEBUG is defined on top of the sketch
 #ifdef DEBUG
@@ -1648,8 +1622,6 @@ uint8_t inputButtons() {
 			Serial.println(F(" (Y/M/D)"));
 		#endif
 
-  Serial.println(F("-----------------------------------"));
-}
-
-
+		Serial.println(F("-----------------------------------"));
+	}
 #endif
