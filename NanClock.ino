@@ -1,5 +1,5 @@
-// #define DEBUG //comment below to disable serial in-/output and free some RAM
-// #define USEWIFI //enable WiFi support, further down, enter ssid/password there
+//#define DEBUG //comment below to disable serial in-/output and free some RAM
+//#define USEWIFI //enable WiFi support, further down, enter ssid/password there
 #define FADING // uncomment to enable fading effects for dots/digits, other parameters further down below
 #define TEMPDISPLAY // uncomment this to enable tempDisplay(). It's an example of how to display values at specified times, like temperature readouts
 #define PIR // sets a PIR to lower brightness when no movement
@@ -36,14 +36,17 @@
 /* End button config/pins------------------------------------------------------------------------------- */
 
 /* Start basic appearance config------------------------------------------------------------------------ */
-const bool dotsBlinking = true;                     // true = only light up dots on even seconds, false = always on
-const bool leadingZero = false;                     // true = enable a leading zero, 9:00 -> 09:00, 1:30 -> 01:30...
-uint8_t displayMode = 0;                            // 0 = 24h mode, 1 = 12h mode ("1" will also override setting that might be written to EEPROM!)
-uint8_t colorMode = 0;                              // different color modes, setting this to anything else than zero will overwrite values written to eeprom, as above
-uint16_t colorSpeed = 450;                          // controls how fast colors change, smaller = faster (interval in ms at which color moves inside colorizeOutput();) orig: 750
-const bool reverseColorCycling = false;             // true = reverse color movements
-const uint8_t brightnessLevels[5]{ 5, 45, 115, 190, 255 };  // 0 - 255, brightness Levels (min, med, max) - index (0-2) will be saved to eeprom
-uint8_t brightness = brightnessLevels[0];           // default brightness if none saved to eeprom yet / first run
+int8_t dotsBlinking = 1; // 1 = only light up dots on even seconds, 0 = always off, -1 always on
+const bool leadingZero = false; // true = enable a leading zero, 9:00 -> 09:00, 1:30 -> 01:30...
+uint8_t displayMode = 0; // 0 = 24h mode, 1 = 12h mode ("1" will also override setting that might be written to EEPROM!)
+uint8_t colorMode = 0; // different color modes, setting this to anything else than zero will overwrite values written to eeprom, as above
+uint16_t colorSpeed = 750; // controls how fast colors change, smaller = faster (interval in ms at which color moves inside colorizeOutput();) orig: 750
+const bool reverseColorCycling = false; // true = reverse color movements
+const uint8_t brightnessLevels[5] { 2, 45, 115, 190, 255 }; // 0 - 255, brightness Levels (min, med, max) - index will be saved to eeprom
+uint8_t brightness = brightnessLevels[0]; // default brightness if none saved to eeprom yet / first run
+
+const uint8_t brightnessNightLevel = 1; // Brillo mínimo para modo nocturno
+const uint8_t nightColor[2] = { 0, brightnessNightLevel };
 
 /* Fading options--------------------------------------------------------------------------------------- */
 #ifdef FADING
@@ -53,6 +56,9 @@ uint8_t brightness = brightnessLevels[0];           // default brightness if non
 #endif
 /* End basic appearance config-------------------------------------------------------------------------- */
 
+// Array de horas en las que se activa el modo nocturno (formato 24h, 0-23)
+const uint8_t NIGHT_HOURS[] = { 3, 4, 5, 6, 7, 8 }; // Modo nocturno de 4:00 a 7:59
+bool isNightMode = false; // Estado actual del modo nocturno (también controla el PIR)
 
 /* Start PIR config/pins----------------------------------------------------------------------------- */
 #ifdef PIR
@@ -235,16 +241,16 @@ uint8_t btnRepeatCounter = 0; // keeps track of how often a button press has bee
 void setup() {
 	setCpuFrequencyMhz(40);
 
-  Wire.begin();
-  Wire.setClock(100000);
+	Wire.begin();
+	Wire.setClock(50000);
 
-#ifdef DEBUG
-  while (millis() < 1000) {  // safety delay for serial output
-    yield();
-  }
+	#ifdef DEBUG
+		while (millis() < 2000) { // safety delay for serial outputun 
+			yield();
+		}
 
-  Serial.begin(115200);
-  Serial.println(F("  "));
+		Serial.begin(74880);
+		Serial.println(F("  "));
 
 		Serial.print(F("LED power limit: "));
 		Serial.print(LED_PWR_LIMIT);
@@ -401,10 +407,61 @@ void setup() {
 	#endif
 }
 
+/* Night mode functions */
+void checkAndUpdateNightMode() {
+	#ifdef USERTC
+		RtcDateTime now = Rtc.GetDateTime();
+		uint8_t currentHour = now.Hour();
+	#else
+		uint8_t currentHour = hour();
+	#endif
+
+	// Comprobamos si la hora actual está en el array de horas nocturnas
+	bool shouldBeNightMode = false;
+	for (uint8_t i = 0; i < sizeof(NIGHT_HOURS) / sizeof(NIGHT_HOURS[0]); i++) {
+		if (currentHour == NIGHT_HOURS[i]) {
+			shouldBeNightMode = true;
+			break;
+		}
+	}
+
+	// Si el estado del modo nocturno ha cambiado
+	if (shouldBeNightMode != isNightMode) {
+		#ifdef DEBUG
+			Serial.print(F("cambio estado nightMode: "));
+
+		#endif
+
+		isNightMode = shouldBeNightMode;
+
+		if (isNightMode) {
+			Serial.println(F("true"));
+
+			brightness = brightnessNightLevel;
+			dotsBlinking = 0;
+			fadeDigits = 0;
+			fadeDots = 0;
+		}
+		else {
+			Serial.println(F("false"));
+
+			// Saliendo del modo nocturno
+			#ifdef PIR
+				brightness = motionDetected ? lastBrightness : brightnessLevels[0];
+				dotsBlinking = motionDetected ? 1 : 0;
+				fadeDigits = motionDetected ? 2 : 0;
+				fadeDots = motionDetected ? 2 : 0;
+			#else
+				brightness = lastBrightness;
+				dotsBlinking = 1;
+				fadeDigits = 2;
+				fadeDots = 2;
+			#endif
+		}
+	}
+}
 
 /* MAIN LOOP */
-
-
 void loop() {
 	static uint8_t lastInput = 0; // != 0 if any button press has been detected
 	static uint8_t lastSecondDisplayed = 0; // This keeps track of the last second when the display was updated (HH:MM and HH:MM:SS)
@@ -435,6 +492,9 @@ void loop() {
 				paletteSwitcher();
 			}
 			if (lastInput == 3) { // short press button A + button B
+				FastLED.clear();
+				FastLED.show();
+				setupClock(); // start date/time setup
 			}
 		}
 		else if (btnRepeatCounter > 8) { // execute long press function(s)...
@@ -453,9 +513,7 @@ void loop() {
 				displayModeSwitcher();
 			}
 			if (lastInput == 3) { // long press button A + button B
-				FastLED.clear();
-				FastLED.show();
-				setupClock(); // start date/time setup
+				esp_restart();
 			}
 			while (digitalRead(BUTTON_A_PIN) == LOW || digitalRead(BUTTON_B_PIN) == LOW) { // wait until buttons are released again
 				if (millis() % 50 == 0) { // Refresh leds every 50ms to give optical feedback
@@ -468,16 +526,29 @@ void loop() {
 		}
 	}
 
-  if (millis() - lastCheckRTC >= 50) {  // check rtc/system time every 50ms
-#ifdef USERTC
-    rtcTime = Rtc.GetDateTime();
-    if (lastSecondDisplayed != rtcTime.Second()) doUpdate = true;
-#else
-    sysTime = now();
-    if (lastSecondDisplayed != second(sysTime)) doUpdate = true;
-#endif
-    lastCheckRTC = millis();
-  }
+	uint8_t refreshWindowMils = 300;
+
+	if (isNightMode) {
+		refreshWindowMils = 1000 * 30; //reviso y actualizo cada 30s
+		refreshDelay = 1000 * 30; //reviso y actualizo cada 30s
+	}
+
+
+	if (millis() - lastCheckRTC >= refreshWindowMils) { // check rtc/system time every orig: 50ms
+		#ifdef USERTC
+			rtcTime = Rtc.GetDateTime();
+			if (lastSecondDisplayed != rtcTime.Second()) {
+				doUpdate = true;
+			}
+		#else
+			sysTime = now();
+			if (lastSecondDisplayed != second(sysTime)) {
+				doUpdate = true;
+			}
+		#endif
+
+		lastCheckRTC = millis();
+	}
 
 	if (doUpdate) { // this will update the led array if doUpdate is true because of a new second from the rtc
 		checkAndUpdateNightMode(); // Verificamos el modo nocturno
@@ -494,7 +565,8 @@ void loop() {
 		#endif
 
 		#ifdef TEMPDISPLAY
-			tempDisplay(); // 3AB - if tempDisplay is defined this will clear the led array again to display custom
+			if (!isNightMode)
+				tempDisplay(); // 3AB - if tempDisplay is defined this will clear the led array again to display custom
 		#endif
 
 		doUpdate = false;
@@ -520,6 +592,7 @@ void loop() {
 	lastInput = inputButtons();
 
 	//TODO: ACA PODRIA IR UN SLEEP
+	
 }
 
 #ifdef TEMPDISPLAY
@@ -571,98 +644,120 @@ void loop() {
 		}
 	}
 
-void digitsFader() {
-  if (fadeDigits == 0) return;
-  static unsigned long firstRun = 0;                       // time when a change has been detected and fading starts
-  static unsigned long lastRun = 0;                        // used to store time when this function was executed the last time
-  static boolean active = false;                           // will be used as a flag when to do something / fade segments
-  static uint8_t previousSegments[LED_DIGITS][7] = { 0 };  // all the segments lit after the last run
-  static uint8_t currentSegments[LED_DIGITS][7] = { 0 };   // all the segments lit right now
-  static uint8_t changedSegments[LED_DIGITS][7] = { 0 };   // used to store the differences -> 1 = led has been turned off, fade out, 2 = was off, fade in
-  static uint8_t fadeSteps = 15;                           // steps used to fade dots in or out
-  lastRun = millis();
-  if (!active) {  // this will check if....
-    firstRun = millis();
-    for (uint8_t digitPos = 0; digitPos < LED_DIGITS; digitPos++) {  // ...any of the segments are on....
-      for (uint8_t segmentPos = 0; segmentPos < 7; segmentPos++) {
-        if (leds[pgm_read_word_near(&segGroups[segmentPos + digitPos * 7][0])]) {
-          currentSegments[digitPos][segmentPos] = 1;
-        } else {
-          currentSegments[digitPos][segmentPos] = 0;
-        }
-        if (currentSegments[digitPos][segmentPos] != previousSegments[digitPos][segmentPos]) {  // ...and compare them to the previous displayed segments.
-          active = true;                                                                        // if a change has been detected, set active = true so fading gets executed
-#ifdef DEBUG
-          Serial.print(F("digitPos: "));
-          Serial.print(digitPos);
-          Serial.print(F(" - segmentPos: "));
-          Serial.print(segmentPos);
-          Serial.print(F(" was "));
-#endif
-          if (currentSegments[digitPos][segmentPos] == 0) {
-            changedSegments[digitPos][segmentPos] = 1;
-#ifdef DEBUG
-            Serial.println(F("ON, is now OFF"));
-#endif
-          } else {
-            changedSegments[digitPos][segmentPos] = 2;
-#ifdef DEBUG
-            Serial.println(F("OFF, is now ON"));
-#endif
-          }
-        }
-      }
-    }
-  }
-  if (active) {  // this part is executed once a change has been detected....
-    static uint8_t counter = 1;
-    static unsigned long lastFadeStep = millis();
-    for (uint8_t digitPos = 0; digitPos < LED_DIGITS; digitPos++) {  // redraw segments that have turned off, so we can fade them out...
-      for (uint8_t segmentPos = 0; segmentPos < 7; segmentPos++) {
-        if (changedSegments[digitPos][segmentPos] == 1) {
-          showSegment(segmentPos, digitPos);
-        }
-      }
-    }
-    colorizeOutput(colorMode);  // colorize again after redraw, so colors keep consistent
-    for (uint8_t digitPos = 0; digitPos < LED_DIGITS; digitPos++) {
-      for (uint8_t segmentPos = 0; segmentPos < 7; segmentPos++) {
-        if (changedSegments[digitPos][segmentPos] == 1) {                       // 1 - segment has turned on, this one has to be faded in
-          fadeSegment(digitPos, segmentPos, counter * (255.0 / fadeSteps), 0);  // fadeToBlackBy, segments supposed to be off/fading out
-        }
-        if (changedSegments[digitPos][segmentPos] == 2) {  // 2 - segment has turned off, this one has to be faded out
-          if (fadeDigits == 2) {
-            fadeSegment(digitPos, segmentPos, 255 - counter * (255.0 / fadeSteps), 1);  // fadeLightBy, segments supposed to be on/fading in
-          }
-        }
-      }
-    }
-    if (millis() - lastFadeStep >= fadeDelay) {
-      counter++;
-      lastFadeStep = millis();
-    }
-    if (counter > fadeSteps) {  // done with fading, reset variables...
-      counter = 1;
-      active = false;
-      for (uint8_t digitPos = 0; digitPos < LED_DIGITS; digitPos++) {  // and save current segments to previousSegments
-        for (uint8_t segmentPos = 0; segmentPos < 7; segmentPos++) {
-          if (leds[pgm_read_word_near(&segGroups[segmentPos + digitPos * 7][0])]) {
-            previousSegments[digitPos][segmentPos] = 1;
-          } else {
-            previousSegments[digitPos][segmentPos] = 0;
-          }
-          changedSegments[digitPos][segmentPos] = 0;
-        }
-      }
-#ifdef DEBUG
-      Serial.print(F("digit fading sequence took "));  // for debugging/checking duration - fading should never take longer than 1000ms!
-      Serial.print(millis() - firstRun);
-      Serial.println(F(" ms"));
-#endif
-    }
-  }
-}
+	void digitsFader() {
+		if (fadeDigits == 0)
+			return;
 
+		static unsigned long firstRun = 0; // time when a change has been detected and fading starts
+		static unsigned long lastRun = 0; // used to store time when this function was executed the last time
+		static boolean active = false; // will be used as a flag when to do something / fade segments
+		static uint8_t previousSegments[LED_DIGITS][7] = { 0 }; // all the segments lit after the last run
+		static uint8_t currentSegments[LED_DIGITS][7] = { 0 }; // all the segments lit right now
+		static uint8_t changedSegments[LED_DIGITS][7] = { 0 }; // used to store the differences -> 1 = led has been turned off, fade out, 2 = was off, fade in
+		static uint8_t fadeSteps = 12; // steps used to fade dots in or out orig: 15
+		lastRun = millis();
+
+		if (!active) { // this will check if....
+			firstRun = millis();
+			for (uint8_t digitPos = 0; digitPos < LED_DIGITS; digitPos++) { // ...any of the segments are on....
+				for (uint8_t segmentPos = 0; segmentPos < 7; segmentPos++) {
+					if (leds[pgm_read_word_near(&segGroups[segmentPos + digitPos * 7][0])]) {
+						currentSegments[digitPos][segmentPos] = 1;
+					}
+					else {
+						currentSegments[digitPos][segmentPos] = 0;
+					}
+
+					if (currentSegments[digitPos][segmentPos]
+						!= previousSegments[digitPos]
+										[segmentPos]) { // ...and compare them to the previous displayed segments.
+						active = true; // if a change has been detected, set active = true so fading gets executed
+
+						#ifdef DEBUG
+							Serial.print(F("digitPos: "));
+							Serial.print(digitPos);
+							Serial.print(F(" - segmentPos: "));
+							Serial.print(segmentPos);
+							Serial.print(F(" was "));
+						#endif
+
+						if (currentSegments[digitPos][segmentPos] == 0) {
+							changedSegments[digitPos][segmentPos] = 1;
+
+							#ifdef DEBUG
+								Serial.println(F("ON, is now OFF"));
+							#endif
+						}
+						else {
+							changedSegments[digitPos][segmentPos] = 2;
+
+							#ifdef DEBUG
+								Serial.println(F("OFF, is now ON"));
+							#endif
+						}
+					}
+				}
+			}
+		}
+
+		if (active) { // this part is executed once a change has been detected....
+			static uint8_t counter = 1;
+			static unsigned long lastFadeStep = millis();
+			for (uint8_t digitPos = 0; digitPos < LED_DIGITS;
+				digitPos++) { // redraw segments that have turned off, so we can fade them out...
+				for (uint8_t segmentPos = 0; segmentPos < 7; segmentPos++) {
+					if (changedSegments[digitPos][segmentPos] == 1) {
+						showSegment(segmentPos, digitPos);
+					}
+				}
+			}
+			colorizeOutput(colorMode); // colorize again after redraw, so colors keep consistent
+			for (uint8_t digitPos = 0; digitPos < LED_DIGITS; digitPos++) {
+				for (uint8_t segmentPos = 0; segmentPos < 7; segmentPos++) {
+					if (changedSegments[digitPos][segmentPos]
+						== 1) { // 1 - segment has turned on, this one has to be faded in
+						fadeSegment(digitPos, segmentPos, counter * (255.0 / fadeSteps),
+							0); // fadeToBlackBy, segments supposed to be off/fading out
+					}
+					if (changedSegments[digitPos][segmentPos]
+						== 2) { // 2 - segment has turned off, this one has to be faded out
+						if (fadeDigits == 2) {
+							fadeSegment(digitPos, segmentPos, 255 - counter * (255.0 / fadeSteps),
+								1); // fadeLightBy, segments supposed to be on/fading in
+						}
+					}
+				}
+			}
+
+			if (millis() - lastFadeStep >= fadeDelay) {
+				counter++;
+				lastFadeStep = millis();
+			}
+
+			if (counter > fadeSteps) { // done with fading, reset variables...
+				counter = 1;
+				active = false;
+				for (uint8_t digitPos = 0; digitPos < LED_DIGITS;
+					digitPos++) { // and save current segments to previousSegments
+					for (uint8_t segmentPos = 0; segmentPos < 7; segmentPos++) {
+						if (leds[pgm_read_word_near(&segGroups[segmentPos + digitPos * 7][0])])
+							previousSegments[digitPos][segmentPos] = 1;
+						else
+							previousSegments[digitPos][segmentPos] = 0;
+
+						changedSegments[digitPos][segmentPos] = 0;
+					}
+				}
+
+				#ifdef DEBUG
+					Serial.print(F("digit fading sequence took ")); // for debugging/checking duration - fading should never
+																	// take longer than 1000ms!
+					Serial.print(millis() - firstRun);
+					Serial.println(F(" ms"));
+				#endif
+			}
+		}
+	}
 
 	void dotsFader() {
 		if (fadeDots == 0)
@@ -981,8 +1076,7 @@ void colorizeOutput(uint8_t mode) {
 		for (uint8_t i = 0; i < (sizeof(upperDots) / sizeof(upperDots[0]));
 			i++) { // ...start applying colors to all leds inside the array
 			if (clockStatus == 0) {
-				leds[pgm_read_word_near(&upperDots[i])]
-					= ColorFromPalette(currentPalette, second() * 4.25, brightness, LINEARBLEND);
+				leds[pgm_read_word_near(&upperDots[i])] = ColorFromPalette(currentPalette, second() * 4.25, brightness, LINEARBLEND);
 			}
 			else {
 				leds[pgm_read_word_near(&upperDots[i])].setHSV(64, 255, brightness);
@@ -992,8 +1086,7 @@ void colorizeOutput(uint8_t mode) {
 	if (leds[pgm_read_word_near(&lowerDots[0])]) { // same as before for the lower dots...
 		for (uint8_t i = (sizeof(lowerDots) / sizeof(lowerDots[0])); i > 0; i--) {
 			if (clockStatus == 0) {
-				leds[pgm_read_word_near(&lowerDots[i - 1])]
-					= ColorFromPalette(currentPalette, second() * 4.25, brightness, LINEARBLEND);
+				leds[pgm_read_word_near(&lowerDots[i - 1])] = ColorFromPalette(currentPalette, second() * 4.25, brightness, LINEARBLEND);
 			}
 			else {
 				leds[pgm_read_word_near(&lowerDots[i - 1])].setHSV(64, 255, brightness);
@@ -1009,6 +1102,19 @@ void colorizeOutput(uint8_t mode) {
 		}
 		lastColorChange = millis();
 	}
+
+	if (isNightMode && clockStatus == 0) {                           // nightmode will overwrite everything that has happened so far...
+		for ( uint16_t i = 0; i < LED_COUNT; i++ ) {
+			if ( leds[i] ) {
+				leds[i].setHSV(nightColor[0], 255, nightColor[1] );      // and assign nightColor to all lit leds. Default is a very dark red.
+				FastLED.setDither(0);
+			}
+		}
+	}
+	else {
+		FastLED.setDither(1);
+	}
+
 }
 
 void colorizeSegment(uint8_t segment, uint8_t pos, uint8_t color) {
@@ -1053,57 +1159,64 @@ void colorHelper(uint8_t pos, uint8_t hue, uint8_t sat, uint8_t bri) {
 }
 
 void displayTime(time_t t) {
-  if (clockStatus >= 90) {
-    FastLED.clear();
-  }
-  /* hours */
-  if (displayMode == 0) {
-    if (hour(t) < 10) {
-      if (leadingZero) {
-        showDigit(0, digitPositions[0]);
-      }
-    } else {
-      showDigit(hour(t) / 10, digitPositions[0]);
-    }
-    showDigit(hour(t) % 10, digitPositions[1]);
-  } else if (displayMode == 1) {
-    if (hourFormat12(t) < 10) {
-      if (leadingZero) {
-        showDigit(0, digitPositions[0]);
-      }
-    } else {
-      showDigit(hourFormat12(t) / 10, digitPositions[0]);
-    }
-    showDigit(hourFormat12(t) % 10, digitPositions[1]);
-  }
-  /* minutes */
-  showDigit(minute(t) / 10, digitPositions[2]);
-  showDigit(minute(t) % 10, digitPositions[3]);
+	if (clockStatus >= 90) {
+		FastLED.clear();
+	}
 
-  if (clockStatus >= 90) {  // in setup modes displayTime will also use colorizeOutput/FastLED.show!
-    static unsigned long lastRefresh = millis();
-    if (isAM(t) && displayMode == 1) {  // in 12h mode and if it's AM only light up the upper dots (while setting time)
-      showDots(1);
-    } else {
-      showDots(2);
-    }
-    if (millis() - lastRefresh >= 25) {
-      colorizeOutput(colorMode);
-      FastLED.show();
-      lastRefresh = millis();
-    }
-    return;
-  }
-  /* dots */
-  if (dotsBlinking) {
-    if (second(t) % 2 == 0) {
-      showDots(2);
-    }
-  } else {
-    showDots(2);
-  }
+	/* hours */
+	if (displayMode == 0) {
+		if (hour(t) < 10) {
+			if (leadingZero) {
+				showDigit(0, digitPositions[0]);
+			}
+		}
+		else {
+			showDigit(hour(t) / 10, digitPositions[0]);
+		}
+		showDigit(hour(t) % 10, digitPositions[1]);
+	}
+	else if (displayMode == 1) {
+		if (hourFormat12(t) < 10) {
+			if (leadingZero) {
+				showDigit(0, digitPositions[0]);
+			}
+		}
+		else {
+			showDigit(hourFormat12(t) / 10, digitPositions[0]);
+		}
+		showDigit(hourFormat12(t) % 10, digitPositions[1]);
+	}
+	/* minutes */
+	showDigit(minute(t) / 10, digitPositions[2]);
+	showDigit(minute(t) % 10, digitPositions[3]);
+
+	if (clockStatus >= 90) { // in setup modes displayTime will also use colorizeOutput/FastLED.show!
+		static unsigned long lastRefresh = millis();
+		if (isAM(t)
+			&& displayMode == 1) { // in 12h mode and if it's AM only light up the upper dots (while setting time)
+			showDots(1);
+		}
+		else {
+			showDots(2);
+		}
+
+		if (millis() - lastRefresh >= 25) {
+			colorizeOutput(colorMode);
+			FastLED.show();
+			lastRefresh = millis();
+		}
+		return;
+	}
+	/* dots */
+	if (dotsBlinking == 1) {
+		if (second(t) % 2 == 0) {
+			showDots(2);
+		}
+	}
+	else if (dotsBlinking == -1) {
+		showDots(2);
+	}
 }
-
 
 void showSegment(uint8_t segment, uint8_t segDisplay) {
 	// This shows the segments from top of the sketch on a given position (segDisplay). Order of positions/segDisplay is
@@ -1156,7 +1269,7 @@ void showDigit(uint8_t digit, uint8_t pos) {
 void paletteSwitcher() {
 	/* As the name suggests this takes care of switching palettes. When adding palettes, make sure paletteCount
 	increases accordingly. A few examples of gradients/solid colors by using RGB values or HTML Color Codes below */
-	static uint8_t paletteCount = 32;
+	static uint8_t paletteCount = 28;
 	static uint8_t currentIndex = 0;
 	if (clockStatus == 1) { // Clock is starting up, so load selected palette from eeprom...
 		uint8_t tmp = EEPROM.read(0);
@@ -1208,68 +1321,57 @@ void paletteSwitcher() {
 			currentPalette = CRGBPalette16(CRGB::Aqua);
 			break;
 		case 11:
-			currentPalette = CRGBPalette16(CRGB::Gold);
-			break;
-		case 12:
-			currentPalette = CRGBPalette16(CRGB::LawnGreen);
-			break;
-		case 13:
 			currentPalette = CRGBPalette16(CRGB::BlueViolet);
 			break;
-		case 14:
+		case 12:
 			currentPalette = CRGBPalette16(CRGB(224, 0, 32), CRGB(0, 0, 244), CRGB(128, 0, 128), CRGB(224, 0, 64));
 			break;
-		case 15:
+		case 13:
 			currentPalette = CRGBPalette16(CRGB(224, 16, 0), CRGB(192, 64, 0), CRGB(192, 128, 0), CRGB(240, 40, 0));
 			break;
-		case 16:
+		case 14:
 			currentPalette = CRGBPalette16(CRGB::Aquamarine, CRGB::Turquoise, CRGB::Blue, CRGB::DeepSkyBlue);
 			break;
-		case 17:
+		case 15:
 			currentPalette = RainbowColors_p;
 			break;
-		case 18:
+		case 16:
 			currentPalette = PartyColors_p;
 			break;
-		case 19:
+		case 17:
 			currentPalette = CRGBPalette16(CRGB::Gold, CRGB::OrangeRed, CRGB::Tomato, CRGB::FireBrick);
 			break;
-		case 20:
+		case 18:
 			currentPalette = CRGBPalette16(CRGB::Teal, CRGB::Cyan, CRGB::DodgerBlue, CRGB::Navy);
 			break;
-		case 21:
+		case 19:
 			currentPalette = CRGBPalette16(CRGB::Green, CRGB::ForestGreen, CRGB::SeaGreen, CRGB::MediumSpringGreen);
 			break;
-		case 22:
+		case 20:
 			currentPalette = CRGBPalette16(CRGB::Red, CRGB::Crimson, CRGB::DarkRed, CRGB::OrangeRed);
 			break;
-		case 23:
+		case 21:
 			currentPalette = CRGBPalette16(CRGB::Yellow, CRGB::Gold, CRGB::Orange, CRGB::SaddleBrown);
 			break;
-		case 24:
+		case 22:
 			currentPalette = CRGBPalette16(CRGB::SkyBlue, CRGB::RoyalBlue, CRGB::BlueViolet, CRGB::DarkSlateBlue);
 			break;
-		case 25:
+		case 23:
 			currentPalette = CRGBPalette16(CRGB::Purple, CRGB::MediumVioletRed, CRGB::DeepPink, CRGB::HotPink);
 			break;
-		case 26:
-			currentPalette = CRGBPalette16(CRGB::White, CRGB::GhostWhite, CRGB::Lavender, CRGB::LightSlateGray);
-			break;
-		case 27:
-			currentPalette = CRGBPalette16(CRGB::Orange, CRGB::Coral, CRGB::Salmon, CRGB::LightCoral);
-			break;
-		case 28:
-			currentPalette = CRGBPalette16(CRGB::MediumPurple, CRGB::SlateBlue, CRGB::Indigo, CRGB::DarkMagenta);
-			break;
-		case 29:
-			currentPalette = CRGBPalette16(CRGB::Chartreuse, CRGB::Lime, CRGB::GreenYellow, CRGB::SpringGreen);
-			break;
-		case 30:
-			currentPalette = RainbowStripeColors_p;
-			break;
-		case 31:
+		case 24:
 			currentPalette = LavaColors_p;
 			break;
+		case 25:
+			currentPalette = CRGBPalette16(CRGB::Orange, CRGB::Coral, CRGB::Salmon, CRGB::LightCoral);
+			break;
+		case 26:
+			currentPalette = CRGBPalette16(CRGB::MediumPurple, CRGB::SlateBlue, CRGB::Indigo, CRGB::DarkMagenta);
+			break;
+		case 27:
+			currentPalette = CRGBPalette16(CRGB::Chartreuse, CRGB::Lime, CRGB::GreenYellow, CRGB::SpringGreen);
+			break;
+
 		}
 
 	#ifdef DEBUG
