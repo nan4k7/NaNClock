@@ -620,12 +620,10 @@ void loop() {
 		if (leds[pgm_read_word_near(&segGroups[segment + pos * 7][0])]) {
 			if (ledAM == 0) {
 				for (uint8_t i = 0; i < 2; i++) {
-					if (fadeType == 0) {
+					if (fadeType == 0)
 						leds[pgm_read_word_near(&segGroups[segment + pos * 7][i])].fadeToBlackBy(amount);
-					}
-					else {
+					else
 						leds[pgm_read_word_near(&segGroups[segment + pos * 7][i])].fadeLightBy(amount);
-					}
 				}
 			}
 
@@ -633,12 +631,10 @@ void loop() {
 				uint16_t startLed = pgm_read_word_near(&segGroups[segment + pos * 7][0]);
 				uint16_t endLed = pgm_read_word_near(&segGroups[segment + pos * 7][1]);
 				for (uint16_t i = startLed; i <= endLed; i++) {
-					if (fadeType == 0) {
+					if (fadeType == 0)
 						leds[i].fadeToBlackBy(amount);
-					}
-					else {
+					else
 						leds[i].fadeLightBy(amount);
-					}
 				}
 			}
 		}
@@ -661,12 +657,10 @@ void loop() {
 			firstRun = millis();
 			for (uint8_t digitPos = 0; digitPos < LED_DIGITS; digitPos++) { // ...any of the segments are on....
 				for (uint8_t segmentPos = 0; segmentPos < 7; segmentPos++) {
-					if (leds[pgm_read_word_near(&segGroups[segmentPos + digitPos * 7][0])]) {
+					if (leds[pgm_read_word_near(&segGroups[segmentPos + digitPos * 7][0])])
 						currentSegments[digitPos][segmentPos] = 1;
-					}
-					else {
+					else
 						currentSegments[digitPos][segmentPos] = 0;
-					}
 
 					if (currentSegments[digitPos][segmentPos]
 						!= previousSegments[digitPos]
@@ -879,11 +873,10 @@ void setupClock() {
 	while (lastInput != 2) {
 		clockStatus = 93; // 93 = MM setup
 		if (lastInput == 1) {
-			if (setupTime.Minute < 59) {
+			if (setupTime.Minute < 59)
 				setupTime.Minute++;
-			} else {
+			else
 				setupTime.Minute = 0;
-			}
 		}
 		displayTime(makeTime(setupTime));
 		lastInput = inputButtons();
@@ -942,11 +935,10 @@ uint16_t getUserInput(uint8_t sym1, uint8_t sym2, uint8_t startVal, uint8_t endV
 
 	while (lastInput != 2) {
 		if (lastInput == 1) {
-			if (currentVal < endVal) {
+			if (currentVal < endVal)
 				currentVal++;
-			} else {
+			else
 				currentVal = startVal;
-			}
 		}
 
 		FastLED.clear();
@@ -985,6 +977,7 @@ void colorizeOutput(uint8_t mode) {
 	static uint8_t colorOffset = 0; // different offsets result in quite different results, depending on the amount of
 									// leds inside each segment...
 									// ...so it's set inside each color mode if required
+
 	/* mode 0 = check every segment if it's lit and assign a color based on position -> different color per digit
 	Checking the leds like this will not include the dots - they'll be colored later on */
 	if (mode == 0) {
@@ -1075,31 +1068,27 @@ void colorizeOutput(uint8_t mode) {
 	if (leds[pgm_read_word_near(&upperDots[0])]) { // if the first led inside the array upperDot is lit...
 		for (uint8_t i = 0; i < (sizeof(upperDots) / sizeof(upperDots[0]));
 			i++) { // ...start applying colors to all leds inside the array
-			if (clockStatus == 0) {
+			if (clockStatus == 0)
 				leds[pgm_read_word_near(&upperDots[i])] = ColorFromPalette(currentPalette, second() * 4.25, brightness, LINEARBLEND);
-			}
-			else {
+			else
 				leds[pgm_read_word_near(&upperDots[i])].setHSV(64, 255, brightness);
-			}
 		}
 	}
 	if (leds[pgm_read_word_near(&lowerDots[0])]) { // same as before for the lower dots...
 		for (uint8_t i = (sizeof(lowerDots) / sizeof(lowerDots[0])); i > 0; i--) {
-			if (clockStatus == 0) {
+			if (clockStatus == 0)
 				leds[pgm_read_word_near(&lowerDots[i - 1])] = ColorFromPalette(currentPalette, second() * 4.25, brightness, LINEARBLEND);
-			}
-			else {
+			else
 				leds[pgm_read_word_near(&lowerDots[i - 1])].setHSV(64, 255, brightness);
-			}
 		}
 	}
 
 	if (millis() - lastColorChange > colorSpeed) {
-		if (reverseColorCycling) {
+		if (reverseColorCycling)
 			startColor--;
-		} else {
+		else
 			startColor++;
-		}
+
 		lastColorChange = millis();
 	}
 
@@ -1173,6 +1162,7 @@ void displayTime(time_t t) {
 		else {
 			showDigit(hour(t) / 10, digitPositions[0]);
 		}
+
 		showDigit(hour(t) % 10, digitPositions[1]);
 	}
 	else if (displayMode == 1) {
@@ -1192,13 +1182,10 @@ void displayTime(time_t t) {
 
 	if (clockStatus >= 90) { // in setup modes displayTime will also use colorizeOutput/FastLED.show!
 		static unsigned long lastRefresh = millis();
-		if (isAM(t)
-			&& displayMode == 1) { // in 12h mode and if it's AM only light up the upper dots (while setting time)
+		if (isAM(t) && displayMode == 1) // in 12h mode and if it's AM only light up the upper dots (while setting time)
 			showDots(1);
-		}
-		else {
+		else
 			showDots(2);
-		}
 
 		if (millis() - lastRefresh >= 25) {
 			colorizeOutput(colorMode);
@@ -1273,12 +1260,10 @@ void paletteSwitcher() {
 	static uint8_t currentIndex = 0;
 	if (clockStatus == 1) { // Clock is starting up, so load selected palette from eeprom...
 		uint8_t tmp = EEPROM.read(0);
-		if (tmp >= 0 && tmp < paletteCount) {
+		if (tmp >= 0 && tmp < paletteCount)
 			currentIndex = tmp; // 255 from eeprom would mean there's nothing been written yet, so checking range...
-		}
-		else {
+		else
 			currentIndex = 0; // ...and default to 0 if returned value from eeprom is not 0 - 6
-		}
 
 		#ifdef DEBUG
 			Serial.print(F("paletteSwitcher(): loaded EEPROM value "));
@@ -1391,12 +1376,10 @@ void paletteSwitcher() {
 		#endif
 	}
 
-	if (currentIndex < paletteCount - 1) {
+	if (currentIndex < paletteCount - 1)
 		currentIndex++;
-	}
-	else {
+	else
 		currentIndex = 0;
-	}
 
 	#ifdef DEBUG
 		Serial.println(F("paletteSwitcher() done"));
@@ -1409,12 +1392,10 @@ void brightnessSwitcher() {
 
 	if (clockStatus == 1) { // Clock is starting up, so load selected palette from eeprom...
 		uint8_t tmp = EEPROM.read(1);
-		if (tmp >= 0 && tmp < brightnessLevelsCount) {
+		if (tmp >= 0 && tmp < brightnessLevelsCount)
 			currentIndex = tmp; // 255 from eeprom would mean there's nothing been written yet, so checking range...
-		}
-		else {
+		else
 			currentIndex = 0; // ...and default to 0 if returned value from eeprom is not 0 - 4
-		}
 
 		#ifdef DEBUG
 			Serial.print(F("brightnessSwitcher(): loaded EEPROM value "));
@@ -1442,12 +1423,10 @@ void brightnessSwitcher() {
 		#endif
 	}
 
-	if (currentIndex < (brightnessLevelsCount - 1)) {
+	if (currentIndex < (brightnessLevelsCount - 1))
 		currentIndex = (currentIndex + 1) % brightnessLevelsCount;
-	}
-	else {
+	else
 		currentIndex = 0;
-	}
 
 	#ifdef DEBUG
 		Serial.println(F("brightnessSwitcher() done"));
@@ -1462,12 +1441,10 @@ void colorModeSwitcher() {
 
 		uint8_t tmp = EEPROM.read(3);
 
-		if (tmp >= 0 && tmp < 4) { // make sure tmp < 3 is increased if color modes are added in colorizeOutput()!
+		if (tmp >= 0 && tmp < 4) // make sure tmp < 3 is increased if color modes are added in colorizeOutput()!
 			currentIndex = tmp; // 255 from eeprom would mean there's nothing been written yet, so checking range...
-		}
-		else {
+		else
 			currentIndex = 0; // ...and default to 0 if returned value from eeprom is not 0 - 2
-		}
 
 		#ifdef DEBUG
 			Serial.print(F("colorModeSwitcher(): loaded EEPROM value "));
@@ -1493,12 +1470,10 @@ void colorModeSwitcher() {
 		#endif
 	}
 
-	if (currentIndex < 3) {
+	if (currentIndex < 3)
 		currentIndex++;
-	}
-	else {
+	else
 		currentIndex = 0;
-	}
 
 	#ifdef DEBUG
 		Serial.println(F("colorModeSwitcher() done"));
@@ -1514,12 +1489,10 @@ void displayModeSwitcher() {
 
 		uint8_t tmp = EEPROM.read(2);
 
-		if (tmp >= 0 && tmp < 2) { // make sure tmp < 2 is increased if display modes are added
+		if (tmp >= 0 && tmp < 2) // make sure tmp < 2 is increased if display modes are added
 			currentIndex = tmp; // 255 from eeprom would mean there's nothing been written yet, so checking range...
-		}
-		else {
+		else
 			currentIndex = 0; // ...and default to 0 if returned value from eeprom is not 0 - 1 (24h/12h mode)
-		}
 
 		#ifdef DEBUG
 			Serial.print(F("displayModeSwitcher(): loaded EEPROM value "));
@@ -1569,12 +1542,10 @@ void displayModeSwitcher() {
 		}
 	}
 
-	if (currentIndex < 1) {
+	if (currentIndex < 1)
 		currentIndex++;
-	}
-	else {
+	else
 		currentIndex = 0;
-	}
 
 	#ifdef DEBUG
 		Serial.println(F("displayModeSwitcher() done"));
@@ -1633,7 +1604,8 @@ uint8_t inputButtons() {
 				retVal = currentState; // ...and set retVal to currentState
 				btnRepeatCounter++;
 				lastReturn = millis();
-			} else
+			}
+			else
 				retVal = 0; // return 0 if repeatDelay hasn't been reached yet
 		}
 	}
